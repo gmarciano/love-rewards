@@ -37,7 +37,7 @@ type StoredState = {
 }
 
 const STORAGE_KEY = 'love-rewards-v1'
-// const COOLDOWN_MS = 24 * 60 * 60 * 1000
+const COOLDOWN_MS = 24 * 60 * 60 * 1000
 const hiddenFragmentVariable = 'zecolino'
 
 const initialState: StoredState = {
@@ -252,21 +252,21 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
-// function formatCountdown(ms: number) {
-//   const safeMs = Math.max(0, ms)
-//   const hours = Math.floor(safeMs / 3_600_000)
-//   const minutes = Math.floor((safeMs % 3_600_000) / 60_000)
-//   const seconds = Math.floor((safeMs % 60_000) / 1000)
+function formatCountdown(ms: number) {
+  const safeMs = Math.max(0, ms)
+  const hours = Math.floor(safeMs / 3_600_000)
+  const minutes = Math.floor((safeMs % 3_600_000) / 60_000)
+  const seconds = Math.floor((safeMs % 60_000) / 1000)
 
-//   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(
-//     2,
-//     '0',
-//   )}:${String(seconds).padStart(2, '0')}`
-// }
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(
+    2,
+    '0',
+  )}:${String(seconds).padStart(2, '0')}`
+}
 
 function App() {
   const [state, setState] = useState<StoredState>(() => loadState())
-  // const [now, setNow] = useState(() => Date.now())
+  const [now, setNow] = useState(() => Date.now())
   const [isSpinning, setIsSpinning] = useState(false)
   const [rotation, setRotation] = useState(0)
   const [toast, setToast] = useState('')
@@ -281,9 +281,23 @@ function App() {
   )
 
   const lastPrize = state.history[0]
-  // const lastSpinMs = state.lastSpinAt ? new Date(state.lastSpinAt).getTime() : 0
-  // const remainingMs = state.lastSpinAt ? lastSpinMs + COOLDOWN_MS - now : 0
-  const canSpin = !isSpinning // Timing disabled
+
+  function getNext9AM() {
+    const next = new Date()
+    next.setHours(9, 0, 0, 0)
+    if (next.getTime() <= Date.now()) {
+      next.setDate(next.getDate() + 1)
+    }
+    return next.getTime()
+  }
+
+  const lastSpinWasToday = state.lastSpinAt
+    ? new Date(state.lastSpinAt).toDateString() === new Date().toDateString()
+    : false
+
+  const remainingMs = lastSpinWasToday ? getNext9AM() - now : 0
+  const canSpin = !isSpinning && remainingMs <= 0
+
   const unlockedAchievements = achievements.filter((item) =>
     unlockedIds.has(item.id),
   )
@@ -439,10 +453,10 @@ function App() {
     }
   }, [state.history])
 
-  // useEffect(() => {
-  //   const timer = window.setInterval(() => setNow(Date.now()), 1000)
-  //   return () => window.clearInterval(timer)
-  // }, [])
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -551,7 +565,7 @@ function App() {
             ))}
           </div>
           <button className="primary-button" onClick={handleSpin} disabled={!canSpin}>
-            {isSpinning ? 'Girando...' : 'Girar'}
+            {isSpinning ? 'Girando...' : remainingMs > 0 ? `Próximo giro em ${formatCountdown(remainingMs)}` : 'Girar'}
           </button>
           {lastPrize && (
             <button className="ghost-button" onClick={() => handleShare()}>
