@@ -37,7 +37,7 @@ type StoredState = {
 }
 
 const STORAGE_KEY = 'love-rewards-v1'
-const COOLDOWN_MS = 24 * 60 * 60 * 1000
+// const COOLDOWN_MS = 24 * 60 * 60 * 1000
 const hiddenFragmentVariable = 'zecolino'
 
 const initialState: StoredState = {
@@ -263,7 +263,7 @@ function formatCountdown(ms: number) {
 
 function App() {
   const [state, setState] = useState<StoredState>(() => loadState())
-  const [now, setNow] = useState(() => Date.now())
+  // const [now, setNow] = useState(() => Date.now())
   const [isSpinning, setIsSpinning] = useState(false)
   const [rotation, setRotation] = useState(0)
   const [toast, setToast] = useState('')
@@ -277,9 +277,9 @@ function App() {
   )
 
   const lastPrize = state.history[0]
-  const lastSpinMs = state.lastSpinAt ? new Date(state.lastSpinAt).getTime() : 0
-  const remainingMs = state.lastSpinAt ? lastSpinMs + COOLDOWN_MS - now : 0
-  const canSpin = remainingMs <= 0 && !isSpinning
+  // const lastSpinMs = state.lastSpinAt ? new Date(state.lastSpinAt).getTime() : 0
+  // const remainingMs = state.lastSpinAt ? lastSpinMs + COOLDOWN_MS - now : 0
+  const canSpin = !isSpinning // Timing disabled
   const unlockedAchievements = achievements.filter((item) =>
     unlockedIds.has(item.id),
   )
@@ -407,10 +407,10 @@ function App() {
     }
   }, [state.history])
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [])
+  // useEffect(() => {
+  //   const timer = window.setInterval(() => setNow(Date.now()), 1000)
+  //   return () => window.clearInterval(timer)
+  // }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -512,7 +512,7 @@ function App() {
             ))}
           </div>
           <button className="primary-button" onClick={handleSpin} disabled={!canSpin}>
-            {canSpin ? (isSpinning ? 'Girando...' : 'Girar') : `Próximo giro em ${formatCountdown(remainingMs)}`}
+            {isSpinning ? 'Girando...' : 'Girar'}
           </button>
           {lastPrize && (
             <button className="ghost-button" onClick={handleShare}>
