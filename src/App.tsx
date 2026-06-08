@@ -37,7 +37,6 @@ type StoredState = {
 }
 
 const STORAGE_KEY = 'love-rewards-v1'
-const COOLDOWN_MS = 24 * 60 * 60 * 1000
 const hiddenFragmentVariable = 'zecolino'
 
 const initialState: StoredState = {
