@@ -77,11 +77,55 @@ const prizes: Record<Rarity, string[]> = {
 };
 
 const rarityWeights: Record<Rarity, number> = {
-  Comum: 60,
-  Incomum: 25,
-  Raro: 10,
-  Epico: 4.9,
-  Lendario: 0.1,
+  Comum: 35,
+  Incomum: 30,
+  Raro: 20,
+  Epico: 10,
+  Lendario: 5,
+}
+
+// Create alternating segments proportional to rarity weights (20 total segments)
+const totalSegments = 20
+const alternatingPattern: Rarity[] = [
+  'Comum', 'Incomum', 'Raro',
+  'Comum', 'Incomum', 'Epico',
+  'Comum', 'Incomum', 'Raro',
+  'Comum', 'Incomum', 'Lendario',
+  'Comum', 'Incomum', 'Epico',
+  'Comum', 'Incomum', 'Raro',
+  'Comum', 'Raro',
+]
+
+const wheelSegments: Array<{ rarity: Rarity; index: number }> = alternatingPattern.map(
+  (rarity, index) => ({ rarity, index })
+)
+
+const degreesPerSegment = 360 / totalSegments
+
+const rarityCssVar: Record<Rarity, string> = {
+  Comum: 'var(--rarity-comum)',
+  Incomum: 'var(--rarity-incomum)',
+  Raro: 'var(--rarity-raro)',
+  Epico: 'var(--rarity-epico)',
+  Lendario: 'var(--rarity-lendario)',
+}
+
+const wheelGradient = `conic-gradient(from 0deg, ${wheelSegments
+  .map(({ rarity }, index) => {
+    const start = index * degreesPerSegment
+    const end = (index + 1) * degreesPerSegment
+    return `${rarityCssVar[rarity]} ${start}deg ${end}deg`
+  })
+  .join(', ')})`
+
+function pointerAngleFromRotation(rotationDeg: number) {
+  const normalized = ((rotationDeg % 360) + 360) % 360
+  return (360 - normalized + 360) % 360
+}
+
+function segmentIndexFromPointerAngle(angleDeg: number) {
+  const normalized = ((angleDeg % 360) + 360) % 360
+  return Math.floor(normalized / degreesPerSegment) % totalSegments
 }
 
 const achievements: Achievement[] = [
@@ -201,47 +245,6 @@ function randomUnit() {
   return array[0] / 0xffffffff
 }
 
-function legendaryChance(spinsWithoutLegendary: number) {
-  if (spinsWithoutLegendary > 200) return 100
-  if (spinsWithoutLegendary >= 151) return 5
-  if (spinsWithoutLegendary >= 101) return 2
-  if (spinsWithoutLegendary >= 51) return 1
-  if (spinsWithoutLegendary >= 21) return 0.5
-  return 0.1
-}
-
-function drawRarity(spinsWithoutLegendary: number): Rarity {
-  const pityChance = legendaryChance(spinsWithoutLegendary)
-  if (randomUnit() * 100 < pityChance) return 'Lendario'
-
-  const remainingLegendary = Math.max(0, rarityWeights.Lendario - pityChance)
-  const pool: Array<[Rarity, number]> = [
-    ['Comum', rarityWeights.Comum],
-    ['Incomum', rarityWeights.Incomum],
-    ['Raro', rarityWeights.Raro],
-    ['Epico', rarityWeights.Epico],
-    ['Lendario', remainingLegendary],
-  ]
-  const total = pool.reduce((sum, [, weight]) => sum + weight, 0)
-  let cursor = randomUnit() * total
-
-  for (const [rarity, weight] of pool) {
-    cursor -= weight
-    if (cursor <= 0) return rarity
-  }
-
-  return 'Comum'
-}
-
-function drawPrize(spinsWithoutLegendary: number): Prize {
-  const rarity = drawRarity(spinsWithoutLegendary)
-  const options = prizes[rarity]
-  return {
-    label: options[Math.floor(randomUnit() * options.length)],
-    rarity,
-  }
-}
-
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('pt-BR', {
     dateStyle: 'short',
@@ -249,17 +252,17 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
-function formatCountdown(ms: number) {
-  const safeMs = Math.max(0, ms)
-  const hours = Math.floor(safeMs / 3_600_000)
-  const minutes = Math.floor((safeMs % 3_600_000) / 60_000)
-  const seconds = Math.floor((safeMs % 60_000) / 1000)
+// function formatCountdown(ms: number) {
+//   const safeMs = Math.max(0, ms)
+//   const hours = Math.floor(safeMs / 3_600_000)
+//   const minutes = Math.floor((safeMs % 3_600_000) / 60_000)
+//   const seconds = Math.floor((safeMs % 60_000) / 1000)
 
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(
-    2,
-    '0',
-  )}:${String(seconds).padStart(2, '0')}`
-}
+//   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(
+//     2,
+//     '0',
+//   )}:${String(seconds).padStart(2, '0')}`
+// }
 
 function App() {
   const [state, setState] = useState<StoredState>(() => loadState())
@@ -268,6 +271,7 @@ function App() {
   const [rotation, setRotation] = useState(0)
   const [toast, setToast] = useState('')
   const [isAchievementsOpen, setIsAchievementsOpen] = useState(false)
+  const [resultModal, setResultModal] = useState<Prize | null>(null)
   const typedBuffer = useRef('')
   const stateRef = useRef(state)
 
@@ -312,18 +316,39 @@ function App() {
   async function handleSpin() {
     if (!canSpin) return
 
+    const randomSegmentIndex = Math.floor(randomUnit() * totalSegments)
+
+    const marginDeg = degreesPerSegment * 0.05
+    const minDeg = randomSegmentIndex * degreesPerSegment + marginDeg
+    const maxDeg = (randomSegmentIndex + 1) * degreesPerSegment - marginDeg
+    const targetPointerAngle = minDeg + randomUnit() * (maxDeg - minDeg)
+
+    const currentMod = ((rotation % 360) + 360) % 360
+    const landingOffset =
+      (360 - targetPointerAngle - currentMod + 360) % 360
+    const finalRotation = rotation + 1080 + landingOffset
+
     setIsSpinning(true)
     setToast('')
-    setRotation((current) => current + 1080 + Math.floor(randomUnit() * 360))
+    setRotation(finalRotation)
 
     window.setTimeout(() => {
-      const prize = drawPrize(state.spinsWithoutLegendary)
+      const landedSegmentIndex = segmentIndexFromPointerAngle(
+        pointerAngleFromRotation(finalRotation),
+      )
+      const landedRarity = wheelSegments[landedSegmentIndex].rarity
+      const options = prizes[landedRarity]
+      const finalPrize: Prize = {
+        label: options[Math.floor(randomUnit() * options.length)],
+        rarity: landedRarity,
+      }
+
       const date = new Date().toISOString()
       const entry: SpinHistory = {
         id: crypto.randomUUID(),
         date,
-        prize: prize.label,
-        rarity: prize.rarity,
+        prize: finalPrize.label,
+        rarity: finalPrize.rarity,
       }
 
       setState((current) => {
@@ -333,21 +358,28 @@ function App() {
           history,
           lastSpinAt: date,
           spinsWithoutLegendary:
-            prize.rarity === 'Lendario'
+            finalPrize.rarity === 'Lendario'
               ? 0
               : current.spinsWithoutLegendary + 1,
         }
       })
 
       setIsSpinning(false)
-      setToast(`Prêmio liberado: ${prize.label}`)
+      setResultModal(finalPrize)
     }, 1800)
   }
 
-  async function handleShare() {
-    if (!lastPrize) return
+  async function handleShareModal(prize: Prize) {
+    await handleShare(prize)
+    setResultModal(null)
+  }
 
-    const text = `Love Rewards(TM)\n\nAcabei de ganhar:\n${lastPrize.prize}\n\nO sistema oficial informa que o desenvolvedor encontra-se em débito.`
+  async function handleShare(wonPrize?: Prize) {
+    const prize = wonPrize?.label ?? lastPrize?.prize
+
+    if (!prize) return
+
+    const text = `Love Rewards(TM)\n\nAcabei de ganhar:\n${prize}\n\nO sistema oficial informa que o desenvolvedor encontra-se em débito.`
 
     try {
       if (navigator.share) {
@@ -462,6 +494,16 @@ function App() {
     return () => window.removeEventListener('keydown', handleEscape)
   }, [isAchievementsOpen])
 
+  useEffect(() => {
+    if (!toast) return
+
+    const timer = window.setTimeout(() => {
+      setToast('')
+    }, 3000)
+
+    return () => window.clearTimeout(timer)
+  }, [toast])
+
   return (
     <main className="app-shell">
       <span className="hidden-fragment" aria-hidden="true">
@@ -483,15 +525,12 @@ function App() {
         <div className="wheel-stage">
           <div
             className="wheel"
-            style={{ transform: `rotate(${rotation}deg)` }}
+            style={{
+              transform: `rotate(${rotation}deg)`,
+              background: wheelGradient,
+            }}
             aria-hidden="true"
-          >
-            <span>Comum</span>
-            <span>Incomum</span>
-            <span>Raro</span>
-            <span>Épico</span>
-            <span>Lendário</span>
-          </div>
+          />
           <div className="wheel-pointer" aria-hidden="true" />
         </div>
 
@@ -515,7 +554,7 @@ function App() {
             {isSpinning ? 'Girando...' : 'Girar'}
           </button>
           {lastPrize && (
-            <button className="ghost-button" onClick={handleShare}>
+            <button className="ghost-button" onClick={() => handleShare()}>
               Compartilhar último prêmio
             </button>
           )}
@@ -523,6 +562,35 @@ function App() {
       </section>
 
       {toast && <p className="toast">{toast}</p>}
+
+      {resultModal && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setResultModal(null)}
+        >
+          <div
+            className="result-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="result-header">
+              <p className="result-title">Parabéns, você acabou de ganhar um prêmio</p>
+              <span className={`rarity-pill result-rarity ${rarityClass[resultModal.rarity]}`}>
+                {rarityLabel[resultModal.rarity]}
+              </span>
+            </div>
+            <p className="result-prize">{resultModal.label}</p>
+            <button
+              className="primary-button"
+              onClick={() => handleShareModal(resultModal)}
+            >
+              Compartilhar
+            </button>
+          </div>
+        </div>
+      )}
 
       <section className="history-section">
         <div className="section-heading">
@@ -582,7 +650,7 @@ function App() {
                 aria-label="Fechar conquistas"
                 onClick={() => setIsAchievementsOpen(false)}
               >
-                x
+                ×
               </button>
             </div>
             <div className="achievement-list">
@@ -640,7 +708,6 @@ function App() {
         <div className="footer-signature">
           <strong>Love Rewards(TM) v1.0.0</strong>
           <span>Desenvolvido com amor por Guilherme</span>
-          <br/>
           <span>QA Oficial: Gabriela</span>
         </div>
         <p>Nenhum bug conhecido. A QA discorda.</p>
